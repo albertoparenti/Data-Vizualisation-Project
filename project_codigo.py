@@ -44,8 +44,6 @@ def filter_cases_show(network_df, YEAR=False, SUBREDDIT=False):
     This function prepare data will use in dash, input is the filter to apply in the dash and 
     the output is data filtered and options of filter.
     '''
-    print(YEAR)
-    print(SUBREDDIT)
     if YEAR:
         network_df = network_df.loc[(network_df['YEAR'] == YEAR[0])]
     if SUBREDDIT:
@@ -161,16 +159,23 @@ def networkGraph(YEAR, SUBREDDIT):
              histfunc='count',
              height=400)
 
-    ############ Table #####################################
+    ############ Table Information post #####################################
     table_cols = network_df_filter if YEAR or SUBREDDIT else network_df
     
-    table_cols = table_cols[['Number of words', 'Number of unique works', 'Number of unique stopwords',
+    table_info = table_cols[['Number of words', 'Number of unique works', 'Number of unique stopwords',
                             'Fraction of stopwords', 'Number of sentences', 'Positive sentiment calculated by VADER',
                             'Negative sentiment calculated by VADER','Compound sentiment calculated by VADER']].astype(float)
 
-    table_cols_mean = table_cols.describe().loc[['mean']]
-    dash_table = table_cols_mean.to_dict('records')
-    columns_table = [{"name": i, "id": i} for i in table_cols_mean.columns]
+    table_info_mean = table_info.describe().loc[['mean']].T.reset_index().rename(columns={"index": "Information about post", "mean": "Mean the Reddit filter"})
+    dash_table_info = table_info_mean.to_dict('records')
+    columns_table = [{"name": i, "id": i} for i in table_info_mean.columns]
+
+
+    ############ Table sentiment #####################################
+
+    table_sent = pd.DataFrame(table_cols[['LINK_SENTIMENT']].value_counts()).reset_index().rename(columns={"LINK_SENTIMENT": "Sentiment about link", 0: "Quantity post"})
+    dash_table_sent = table_sent.to_dict('records')
+    columns_sent = [{"name": i, "id": i} for i in table_sent.columns]
 
     ############ Bar chart LIWC #####################################
     cols_liwc = list(network_df_filter.columns[network_df_filter.columns.str.contains('LIWC')])
@@ -180,11 +185,10 @@ def networkGraph(YEAR, SUBREDDIT):
     table_liwc = table_liwc.describe().loc[['mean']].T.reset_index().rename(columns={"index": "category", "mean": "Mean percentual"})
 
     table_liwc["category"] = table_liwc["category"].replace("LIWC_", "", regex=True)
-    print(table_liwc)
 
     fig3 = px.bar(table_liwc, x='category', y='Mean percentual')
 
-    return fig, fig2, dash_table, columns_table, fig3
+    return fig, fig2, dash_table_info, columns_table, dash_table_sent, columns_sent, fig3
 
 
 # Dash app
@@ -213,7 +217,10 @@ app.layout = html.Div([
     dcc.Graph(id='hist_graph'),
 
     html.Br(),
-    dash_table.DataTable(id='table'),
+    dash_table.DataTable(id='table_info'),
+
+    html.Br(),
+    dash_table.DataTable(id='table_sent'),
 
     html.Br(),
     dcc.Graph(id='bar_graph')
@@ -224,8 +231,10 @@ app.layout = html.Div([
 @app.callback(
     Output('my-graph', 'figure'),
     Output("hist_graph", "figure"),
-    Output("table", "data"),
-    Output("table", "columns"),
+    Output("table_info", "data"),
+    Output("table_info", "columns"),
+    Output("table_sent", "data"),
+    Output("table_sent", "columns"),
     Output("bar_graph", "figure"),
     [Input('year_drop', 'value'),
      Input('reddit_drop', 'value')],
