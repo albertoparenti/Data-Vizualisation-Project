@@ -202,13 +202,15 @@ app.layout = html.Div([
 
     html.H1('Reddit Hyperlink Social Network'),
 
-    html.Label('Choose your YEAR'),
-    dropdown_year,
-
-    html.Br(),
-
-    html.Label('Choose your SUBREDDIT'),
-    dropdown_reddit,
+    html.Div([
+        html.Div(children=[html.Label('Choose your YEAR'),
+            dropdown_year,
+            html.Br()], style={'padding': 10, 'flex': 1}),
+    
+        html.Div(children=[html.Label('Choose your SUBREDDIT'),
+            dropdown_reddit,
+            html.Br()], style={'padding': 10, 'flex': 1}),
+            ], style={'display': 'flex', 'flex-direction': 'row'}),
 
     html.Br(),
     dcc.Graph(id='my-graph'),
@@ -244,4 +246,4 @@ def update_output(YEAR, SUBREDDIT):
 
 
 if __name__ == '__main__':
-    app.run_server(host='127.0.0.1', port=8050, debug=True)
+    app.run_server(host='127.0.0.1', port=8050, dev_tools_hot_reload=False)
