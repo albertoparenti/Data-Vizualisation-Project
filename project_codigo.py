@@ -39,7 +39,7 @@ def expand_data(data):
     
     return data_features
 
-def filter_cases_show(network_df, YEAR=False, SUBREDDIT=False):
+def filter_cases_show(network_df, YEAR=False, SUBREDDIT=False, SENTIMENT=False):
     '''
     This function prepare data will use in dash, input is the filter to apply in the dash and 
     the output is data filtered and options of filter.
@@ -48,6 +48,9 @@ def filter_cases_show(network_df, YEAR=False, SUBREDDIT=False):
         network_df = network_df.loc[(network_df['YEAR'] == YEAR[0])]
     if SUBREDDIT:
         network_df = network_df.loc[(network_df['SOURCE_SUBREDDIT'] == SUBREDDIT[0])]
+    if SENTIMENT:
+        network_df = network_df.loc[(network_df['LINK_SENTIMENT'] == SENTIMENT[0])]
+        
     return network_df
 
 
@@ -75,8 +78,16 @@ dropdown_reddit = dcc.Dropdown(
         multi=True
 )
 
-def networkGraph(YEAR, SUBREDDIT):
-    network_df_filter = filter_cases_show(network_df, YEAR, SUBREDDIT)
+sentiment_options = [dict(label=sentim, value=sentim) for sentim in network_df['LINK_SENTIMENT'].unique()]
+dropdown_sentim = dcc.Dropdown(
+        id='sentim_drop',
+        options=sentiment_options,
+        value=[],
+        multi=True
+)
+
+def networkGraph(YEAR, SUBREDDIT, SENTIMENT):
+    network_df_filter = filter_cases_show(network_df, YEAR, SUBREDDIT, SENTIMENT)
     source = list(network_df_filter['SOURCE_SUBREDDIT'].unique())
     target = list(network_df_filter['TARGET_SUBREDDIT'].unique())
     node_list = set(source+target)
@@ -160,7 +171,7 @@ def networkGraph(YEAR, SUBREDDIT):
              height=400)
 
     ############ Table Information post #####################################
-    table_cols = network_df_filter if YEAR or SUBREDDIT else network_df
+    table_cols = network_df_filter if YEAR or SUBREDDIT or SENTIMENT else network_df
     
     table_info = table_cols[['Number of words', 'Number of unique works', 'Number of unique stopwords',
                             'Fraction of stopwords', 'Number of sentences', 'Positive sentiment calculated by VADER',
@@ -188,7 +199,7 @@ def networkGraph(YEAR, SUBREDDIT):
 
     fig3 = px.bar(table_liwc, x='category', y='Mean percentual')
 
-    return fig, fig2, dash_table_info, columns_table, dash_table_sent, columns_sent, fig3
+    return fig, dash_table_info, columns_table, dash_table_sent, columns_sent, fig3, fig2
 
 
 # Dash app
@@ -200,50 +211,69 @@ app.title = 'Dash Networkx'
 
 app.layout = html.Div([
 
-    html.H1('Reddit Hyperlink Social Network'),
+    html.Div([
+        html.H1('Reddit Hyperlink Social Network'), 
+        ], id='1st row', className='pretty_box'),
+    html.Div([
+        html.Div([
+            html.Label('Choose your YEAR'),
+            dropdown_year,
+            html.Br(),
+    
+            html.Label('Choose your SUBREDDIT'),
+            dropdown_reddit,
+            html.Br(),
+
+            html.Label('Choose SENTIMENT'),
+            dropdown_sentim,
+            html.Br(),
+
+            html.Button('Submit', id='button')
+            ],  id='Iteraction', style={'width': '30%'}, className='pretty_box'),
+            html.Div([
+                html.Br(),
+                dcc.Graph(id='my-graph'),
+                ], id='graph', style={'width': '70%'}, className='pretty_box')
+        ], id='2nd row', style={'display': 'flex'}),
 
     html.Div([
-        html.Div(children=[html.Label('Choose your YEAR'),
-            dropdown_year,
-            html.Br()], style={'padding': 10, 'flex': 1}),
-    
-        html.Div(children=[html.Label('Choose your SUBREDDIT'),
-            dropdown_reddit,
-            html.Br()], style={'padding': 10, 'flex': 1}),
-            ], style={'display': 'flex', 'flex-direction': 'row'}),
-
-    html.Br(),
-    dcc.Graph(id='my-graph'),
-
-    html.Br(),
-    dcc.Graph(id='hist_graph'),
-
-    html.Br(),
-    dash_table.DataTable(id='table_info'),
-
-    html.Br(),
-    dash_table.DataTable(id='table_sent'),
-
-    html.Br(),
-    dcc.Graph(id='bar_graph')
+        html.Div([
+            html.Div([
+                html.Br(),
+                dash_table.DataTable(id='table_info'),
+            ]),
+            html.Div([
+                html.Br(),
+                dash_table.DataTable(id='table_sent'),
+            ]),
+        ], id='tables', style={'width': '30%'}, className='pretty_box'),
+        html.Div([
+            html.Br(),
+            dcc.Graph(id='bar_graph'),
+        ], id='bar', style={'width': '70%'}, className='pretty_box'),
+    ], id='3th row', style={'display': 'flex'}),
+        html.Br(),
+        dcc.Graph(id='hist_graph'),
     ]
 )
 
 
 @app.callback(
     Output('my-graph', 'figure'),
-    Output("hist_graph", "figure"),
     Output("table_info", "data"),
     Output("table_info", "columns"),
     Output("table_sent", "data"),
     Output("table_sent", "columns"),
     Output("bar_graph", "figure"),
+    Output("hist_graph", "figure"),
     [Input('year_drop', 'value'),
-     Input('reddit_drop', 'value')],
+     Input('reddit_drop', 'value'),
+     Input('sentim_drop', 'value')],
 )
-def update_output(YEAR, SUBREDDIT):
-    return networkGraph(YEAR, SUBREDDIT)
+def update_output(YEAR, SUBREDDIT, SENTIMENT):
+    return networkGraph(YEAR, SUBREDDIT, SENTIMENT)
 
 
 if __name__ == '__main__':
-    app.run_server(host='127.0.0.1', port=8050, dev_tools_hot_reload=False)
+    #app.run_server(host='127.0.0.1', port=8050, dev_tools_hot_reload=False)
+    app.run_server(debug=True)
