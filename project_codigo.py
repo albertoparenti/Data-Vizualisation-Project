@@ -6,11 +6,12 @@ from dash import dash_table
 import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
-
+import dash_cytoscape as cyto
 from plotly.offline import download_plotlyjs, init_notebook_mode, iplot
 import networkx as nx
 import plotly.express as px
-from feature_properties import name_columns
+from list_features import feature_properties, subreddits_to_keep, cols_to_keep
+import base64
 
 def processing_features(data):
     '''
@@ -18,15 +19,32 @@ def processing_features(data):
     '''
     data['YEAR'] = data['TIMESTAMP'].apply(lambda x: x.split('-')[0])
     data['LINK_SENTIMENT'] = data['LINK_SENTIMENT'].apply(lambda x: 'Neutral or Positive' if x==1 else 'Negative')
+
+    data['undirected_edge'] = data.apply(
+        lambda x: str(sorted([x.SOURCE_SUBREDDIT, x.TARGET_SUBREDDIT])),
+        axis=1)
+
+    mean_sentiment_df = (
+      data.groupby('undirected_edge')
+      .mean('directed_sentiment')
+      .rename(columns={'index': 'sentiment'}))
+
+    # Join mean_sentiment_df with data
+    data = pd.merge(
+      data,
+      mean_sentiment_df,
+      on='undirected_edge',
+      how='left',
+    )
+    
     return data
 
 def filter_data(data):
     '''
     This function will filter cases will show in dashboard because the data is so big and we can't process all them
     '''
-    data_2013 = data.loc[(data['YEAR'] == '2013')][:10]
-    data_2014 = data.loc[(data['YEAR'] == '2014')][:10]
-    data_filter = pd.concat([data_2013, data_2014], axis=0).reset_index()
+    data_filter = (data.query('SOURCE_SUBREDDIT in @subreddits_to_keep or TARGET_SUBREDDIT in @subreddits_to_keep'))
+    
     return data_filter
 
 def expand_data(data):
@@ -34,46 +52,110 @@ def expand_data(data):
     This function expand data in more columns
     '''
     data_expand = data.PROPERTIES.str.split(",",expand=True)
-    data_expand.columns = name_columns
+    data_expand.columns = feature_properties
     data_features = pd.concat([data.drop('PROPERTIES', axis=1), data_expand], axis=1)
+    data_features['directed_sentiment'] = data_features['Compound sentiment calculated by VADER']
     
     return data_features
 
-def filter_cases_show(network_df, YEAR=False, SUBREDDIT=False, SENTIMENT=False):
+def filter_cases_show(network_df, SUBREDDIT=False, SENTIMENT=False):
     '''
     This function prepare data will use in dash, input is the filter to apply in the dash and 
     the output is data filtered and options of filter.
     '''
-    if YEAR:
-        network_df = network_df.loc[(network_df['YEAR'] == YEAR[0])]
     if SUBREDDIT:
-        network_df = network_df.loc[(network_df['SOURCE_SUBREDDIT'] == SUBREDDIT[0])]
+        network_df = network_df.query('SOURCE_SUBREDDIT in @SUBREDDIT or TARGET_SUBREDDIT in @SUBREDDIT')
+
     if SENTIMENT:
-        network_df = network_df.loc[(network_df['LINK_SENTIMENT'] == SENTIMENT[0])]
-        
+        network_df = network_df.query('LINK_SENTIMENT in @SENTIMENT')
+
     return network_df
 
 
 #### Read the dataset and processing features will show in dash
-df_title = pd.read_csv('data_title.tsv',sep='\t')
-df_body = pd.read_csv('data_body.tsv',sep='\t')
+df_title = pd.read_csv('data_title.tsv',sep='\t').loc[:, cols_to_keep]
+df_body = pd.read_csv('data_body.tsv',sep='\t').loc[:, cols_to_keep]
 network_df = pd.concat([df_title, df_body], axis=0).reset_index()
-network_df = processing_features(network_df)
 network_df = filter_data(network_df)
 network_df = expand_data(network_df)
+network_df = processing_features(network_df)
 
-year_options = [dict(label=year, value=year) for year in network_df['YEAR'].unique()]
-dropdown_year = dcc.Dropdown(
-        id='year_drop',
-        options=year_options,
-        value=['2013'],
-        multi=True
+# Create a NetworkX graph with subreddits from the dataframe
+G = nx.from_pandas_edgelist(
+  network_df,
+  source='SOURCE_SUBREDDIT',
+  target='TARGET_SUBREDDIT',
+  edge_attr=['sentiment'],
+)
+
+# Add number of edges to each node
+for n in G.nodes():
+  G.nodes[n]['num_edges'] = len(G.edges(n))
+
+# List with number of edges for each node and get maximum number of edges in a node
+edges_per_node = nx.get_node_attributes(G, 'num_edges')
+max_edges = max(edges_per_node.values())
+
+# Edge weights are the number of times those two nodes were linked
+edge_weights_df = (
+  network_df
+  .groupby(
+    ['SOURCE_SUBREDDIT', 'TARGET_SUBREDDIT'],
+  )
+  .size()
+  .sort_values(ascending=False)
+)
+max_edge_weight = edge_weights_df.max()
+
+# Iterate through edges and add edge weight to the edge attribute
+for e in G.edges():
+  try:
+    G.edges[e]['edge_weight'] = edge_weights_df.loc[e[0], e[1]]
+  except:
+    G.edges[e]['edge_weight'] = 0
+
+# Convert NetworkX graph into Cytoscape graph
+cyto_graph = nx.cytoscape_data(G)
+cyto_nodes = [{'data': {'id': n['data']['id'], 'label': n['data']['id'], 'num_edges': n['data']['num_edges']}} for n in cyto_graph['elements']['nodes'] if n['data']['id'] in subreddits_to_keep]
+cyto_edges = [{'data': {'source': e['data']['source'], 'target': e['data']['target'], 'edge_weight': e['data']['edge_weight'], 'sentiment': e['data']['sentiment']}} for e in cyto_graph['elements']['edges'] if e['data']['source'] in subreddits_to_keep and e['data']['target'] in subreddits_to_keep]
+
+default_stylesheet = [
+    {
+      'selector': 'node',
+      'style': {
+        'width': 'mapData(num_edges, 0, 1300, 5, 50)',
+        'height': 'mapData(num_edges, 0, 1300, 5, 50)',
+        'label': 'data(label)',
+        'text-valign': 'center',
+        'font-size': '6px',
+      }
+    },
+    {
+      'selector': 'edge',
+      'style': {
+        'width': 'mapData(edge_weight, 0, 1300, 0.2, 7)',
+        'height': 'mapData(edge_weight, 0, 1300, 0.2, 7)',
+      }
+    },
+]
+
+default_layout = {'name': 'cose'}
+
+nodes_and_edges = [*cyto_nodes, *cyto_edges]
+
+cyto_graph = cyto.Cytoscape(
+  id='cytoscape-graph-all-subreddits',
+  style={'width': '100%', 'height': '500px'},
+  layout=default_layout,
+  stylesheet=default_stylesheet,
+  elements=nodes_and_edges
 )
 
 reddit_options = [dict(label=reddit, value=reddit) for reddit in network_df['SOURCE_SUBREDDIT'].unique()]
 dropdown_reddit = dcc.Dropdown(
         id='reddit_drop',
         options=reddit_options,
+        style = {"background-color":"rgb(220,220,220)", "color": "rgb(0,0,0)"},
         value=[],
         multi=True
 )
@@ -82,105 +164,122 @@ sentiment_options = [dict(label=sentim, value=sentim) for sentim in network_df['
 dropdown_sentim = dcc.Dropdown(
         id='sentim_drop',
         options=sentiment_options,
+        style = {"background-color":"rgb(220,220,220)"},
         value=[],
         multi=True
 )
 
-def networkGraph(YEAR, SUBREDDIT, SENTIMENT):
-    network_df_filter = filter_cases_show(network_df, YEAR, SUBREDDIT, SENTIMENT)
-    source = list(network_df_filter['SOURCE_SUBREDDIT'].unique())
-    target = list(network_df_filter['TARGET_SUBREDDIT'].unique())
-    node_list = set(source+target)
-
-    # Add nodes
-    G = nx.Graph()
-    for i in node_list:
-        G.add_node(i)
-    for i,j in network_df_filter.iterrows():
-        G.add_edges_from([(j["SOURCE_SUBREDDIT"],j["TARGET_SUBREDDIT"])])
+def networkGraph(node, SUBREDDIT, SENTIMENT):
+    network_df_filter = filter_cases_show(network_df, SUBREDDIT, SENTIMENT)
     
-    #Simulate the position nodes, that will be close if there are conections each others
-    pos = nx.spring_layout(G, k=0.5, iterations=50)
-    for n, p in pos.items():
-        G.node[n]['pos'] = p
+    # Create a NetworkX graph with subreddits from the dataframe
+    if not node:
+        stylesheet = default_stylesheet
+    else:
+        stylesheet = [
+          {
+            "selector": 'node',
+            'style': {
+                'opacity': '0.3',
+                'width': 'mapData(num_edges, 0, 1300, 5, 50)',
+                'height': 'mapData(num_edges, 0, 1300, 5, 50)',
+                'label': 'data(label)',
+                'text-valign': 'center',
+                'font-size': '6px',
+            }
+          },
+          {
+            'selector': 'edge',
+            'style': {
+                'opacity': '0.3',
+                'width': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+                'height': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+            }
+          },
+          {
+            "selector": 'node[id = "{}"]'.format(node['data']['id']),
+            "style": {
+                'background-color': '#FFA07A',
+                "opacity": '1',
+                'width': 'mapData(num_edges, 0, 1300, 5, 50)',
+                'height': 'mapData(num_edges, 0, 1300, 5, 50)',
+                'label': 'data(label)',
+                'text-valign': 'center',
+                'font-size': '6px',
+                'z-index': 9999
+            }
+          }
+        ]
 
-    #Scatter plot edge_trace
-    edge_trace = go.Scatter(
-        x=[],
-        y=[],
-        line=dict(width=0.5,color='#888'),
-        hoverinfo='none',
-        mode='lines')
-    for edge in G.edges():
-        x0, y0 = G.node[edge[0]]['pos']
-        x1, y1 = G.node[edge[1]]['pos']
-        edge_trace['x'] += tuple([x0, x1, None])
-        edge_trace['y'] += tuple([y0, y1, None])
+        for edge in node['edgesData']:
+            if edge['source'] == node['data']['id']:
+                stylesheet.append({
+                    "selector": 'node[id = "{}"]'.format(edge['target']),
+                    "style": {
+                        'background-color': '#BDB76B',
+                        'opacity': 0.9,
+                        'width': 'mapData(num_edges, 0, 1300, 5, 50)',
+                        'height': 'mapData(num_edges, 0, 1300, 5, 50)',
+                        'label': 'data(label)',
+                        'text-valign': 'center',
+                        'font-size': '6px',
+                        'z-index': 5000
+                    }
+                })
+                stylesheet.append({
+                    "selector": 'edge[id= "{}"]'.format(edge['id']),
+                    "style": {
+                        'width': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+                        'height': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+                        'line-color': "mapData(sentiment, -0.5, 1, #BDB76B, #87CEFA)",
+                        'opacity': 0.9,
+                        'z-index': 5000
+                    }
+                })
 
-    #Scatter plot nodes
-    node_trace = go.Scatter(
-            x=[],
-            y=[],
-            text=[],
-            mode='markers',
-            hoverinfo='text',
-            marker=dict(
-                showscale=True,
-                colorscale='RdBu',
-                reversescale=True,
-                color=[],
-                size=15,
-                colorbar=dict(
-                    thickness=10,
-                    title='Node Connections',
-                    xanchor='left',
-                    titleside='right'
-                ),
-                line=dict(width=0)))
-    #Put information axis x and y
-    for node in G.nodes():
-        x, y = G.node[node]['pos']
-        node_trace['x'] += tuple([x])
-        node_trace['y'] += tuple([y])
-
-    #Others information in graph
-    for node, adjacencies in enumerate(G.adjacency()):
-        node_trace['marker']['color']+=tuple([len(adjacencies[1])])
-        node_info = adjacencies[0] +' # of connections: '+str(len(adjacencies[1]))
-        node_trace['text']+=tuple([node_info])
-
-    #Generate graph
-    fig = go.Figure(data=[edge_trace, node_trace],
-             layout=go.Layout(
-                title='Reddit Hyperlink Social Network',
-                titlefont=dict(size=16),
-                showlegend=False,
-                hovermode='closest',
-                margin=dict(b=20,l=5,r=5,t=40),
-                annotations=[ dict(
-                    text="",
-                    showarrow=False,
-                    xref="paper", yref="paper") ],
-                xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)))
+            if edge['target'] == node['data']['id']:
+                stylesheet.append({
+                    "selector": 'node[id = "{}"]'.format(edge['source']),
+                    "style": {
+                        'background-color': '#BDB76B',
+                        'opacity': 0.9,
+                        'width': 'mapData(num_edges, 0, 1300, 5, 50)',
+                        'height': 'mapData(num_edges, 0, 1300, 5, 50)',
+                        'label': 'data(label)',
+                        'text-valign': 'center',
+                        'font-size': '6px',
+                        'z-index': 5000
+                    }
+                })
+                stylesheet.append({
+                    "selector": 'edge[id= "{}"]'.format(edge['id']),
+                    "style": {
+                        'width': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+                        'height': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+                        'line-color': "mapData(sentiment, -0.5, 1, #BDB76B, #87CEFA)",
+                        'opacity': 0.9,
+                        'z-index': 5000
+                    }
+                })
 
     ############ Bar chart #####################################
     fig2 = px.histogram(network_df, x="YEAR", y="LINK_SENTIMENT",
              color='LINK_SENTIMENT', barmode='group',
              histfunc='count',
-             height=400)
+             height=400,color_discrete_sequence=['#BDB76B','#FFA07A'], template="simple_white").update_layout({'plot_bgcolor': 'rgb(220,220,220)','paper_bgcolor': 'rgb(220,220,220)'})
+    fig2.update_xaxes(showline=True, linewidth=1, linecolor='grey', mirror=True)
+    fig2.update_yaxes(showline=True, linewidth=1, linecolor='grey', mirror=True)
 
     ############ Table Information post #####################################
-    table_cols = network_df_filter if YEAR or SUBREDDIT or SENTIMENT else network_df
     
-    table_info = table_cols[['Number of words', 'Number of unique works', 'Number of unique stopwords',
-                            'Fraction of stopwords', 'Number of sentences', 'Positive sentiment calculated by VADER',
-                            'Negative sentiment calculated by VADER','Compound sentiment calculated by VADER']].astype(float)
+    table_cols = network_df_filter if SUBREDDIT or SENTIMENT else network_df
 
-    table_info_mean = table_info.describe().loc[['mean']].T.reset_index().rename(columns={"index": "Information about post", "mean": "Mean the Reddit filter"})
+    table_info = table_cols[['Number of words', 'Number of unique works', 'Number of unique stopwords',
+                            'Fraction of stopwords', 'Number of sentences']].astype(float)
+
+    table_info_mean = table_info.describe().loc[['mean']].round(3).T.reset_index().rename(columns={"index": "Information about post", "mean": "Mean the Reddit filter"})
     dash_table_info = table_info_mean.to_dict('records')
     columns_table = [{"name": i, "id": i} for i in table_info_mean.columns]
-
 
     ############ Table sentiment #####################################
 
@@ -188,18 +287,8 @@ def networkGraph(YEAR, SUBREDDIT, SENTIMENT):
     dash_table_sent = table_sent.to_dict('records')
     columns_sent = [{"name": i, "id": i} for i in table_sent.columns]
 
-    ############ Bar chart LIWC #####################################
-    cols_liwc = list(network_df_filter.columns[network_df_filter.columns.str.contains('LIWC')])
-    
 
-    table_liwc = network_df_filter[cols_liwc].astype(float)
-    table_liwc = table_liwc.describe().loc[['mean']].T.reset_index().rename(columns={"index": "category", "mean": "Mean percentual"})
-
-    table_liwc["category"] = table_liwc["category"].replace("LIWC_", "", regex=True)
-
-    fig3 = px.bar(table_liwc, x='category', y='Mean percentual')
-
-    return fig, dash_table_info, columns_table, dash_table_sent, columns_sent, fig3, fig2
+    return stylesheet, dash_table_info, columns_table, dash_table_sent, columns_sent, fig2
 
 
 # Dash app
@@ -208,70 +297,101 @@ def networkGraph(YEAR, SUBREDDIT, SENTIMENT):
 app = dash.Dash(__name__)
 app.title = 'Dash Networkx'
 
+encoded_image = base64.b64encode(open('image_reddit.png', 'rb').read())
 
 app.layout = html.Div([
-
-    html.Div([
-        html.H1('Reddit Hyperlink Social Network'), 
-        ], id='1st row', className='pretty_box'),
     html.Div([
         html.Div([
-            html.Label('Choose your YEAR'),
-            dropdown_year,
-            html.Br(),
+            html.Img(src='data:image/png;base64,{}'.format(encoded_image.decode()),style={'height':'80%', 'width':'80%'}),
+        ], id='imag', style={'width': '20%'}),
+        html.Div([
+            html.H1('Exploring Crypto Reddit'),
+            dcc.Markdown('''
+            Reddit is a social media platform that allows users to post and comment on content. It is organized into communities called **subreddits**. Here we present an exploration into the connections between cryptocurrency-related subreddits. For more information on what Reddit it, check out [this video](https://www.youtube.com/watch?v=tlI022aUWQQ).
+        ''')
+        ], id='text', style={'width': '80%'}),
+    ], id='1st row', style={'display': 'flex'}, className='pretty_box'),
+    html.Div([
+        html.Div([
+            html.H2('Choose cripto and sentiment'),
     
-            html.Label('Choose your SUBREDDIT'),
+            html.Label('Cripto Reddit'),
             dropdown_reddit,
             html.Br(),
 
-            html.Label('Choose SENTIMENT'),
+            html.Label('Sentiment'),
             dropdown_sentim,
             html.Br(),
 
             html.Button('Submit', id='button')
-            ],  id='Iteraction', style={'width': '30%'}, className='pretty_box'),
-            html.Div([
-                html.Br(),
-                dcc.Graph(id='my-graph'),
-                ], id='graph', style={'width': '70%'}, className='pretty_box')
-        ], id='2nd row', style={'display': 'flex'}),
-
-    html.Div([
+            ],  id='Iteraction', style={'width': '20%'}, className='pretty_box'),
         html.Div([
             html.Div([
+                html.H3('Informations about Subreddit'),
                 html.Br(),
-                dash_table.DataTable(id='table_info'),
+                dash_table.DataTable(id='table_info', 
+                                     style_table={
+                                         'borderRadius':'7px 7px',
+                                         'border': '1px solid grey',
+                                         'overflow': 'hidden',},
+                                     style_header={ 
+                                         'border': '1px solid grey', 
+                                         'overflow': 'hidden', 
+                                         'background-color': 'rgb(220,220,220)',
+                                         'textAlign': 'left'}, 
+                                     style_data={
+                                         'background-color': 'rgb(220,220,220)',
+                                         'border': '1px solid grey', 
+                                         'overflow': 'hidden',
+                                         'textAlign': 'left'}),
             ]),
             html.Div([
                 html.Br(),
-                dash_table.DataTable(id='table_sent'),
+                dash_table.DataTable(id='table_sent',
+                                    style_table={
+                                         'borderRadius':'7px 7px',
+                                         'border': '1px solid grey',
+                                         'overflow': 'hidden',},
+                                     style_header={ 
+                                         'border': '1px solid grey',
+                                         'overflow': 'hidden', 
+                                         'background-color': 'rgb(220,220,220)',
+                                         'textAlign': 'left'}, 
+                                     style_data={
+                                         'background-color': 'rgb(220,220,220)',
+                                         'border': '1px solid grey',
+                                         'overflow': 'hidden',
+                                         'textAlign': 'left'}),
             ]),
         ], id='tables', style={'width': '30%'}, className='pretty_box'),
         html.Div([
-            html.Br(),
-            dcc.Graph(id='bar_graph'),
-        ], id='bar', style={'width': '70%'}, className='pretty_box'),
-    ], id='3th row', style={'display': 'flex'}),
+                html.Br(),
+                cyto_graph,
+            ], id='graph', style={'width': '50%'}, className='pretty_box'),
+    ], id='2nd row', style={'display': 'flex'}),
+        html.Div([
+        html.H4('Distributions about sentiments in subreddit'),
         html.Br(),
         dcc.Graph(id='hist_graph'),
-    ]
-)
+        ],id='3nd row', className='pretty_box')
+])
 
 
 @app.callback(
-    Output('my-graph', 'figure'),
+    Output('cytoscape-graph-all-subreddits', 'stylesheet'),
     Output("table_info", "data"),
     Output("table_info", "columns"),
     Output("table_sent", "data"),
     Output("table_sent", "columns"),
-    Output("bar_graph", "figure"),
     Output("hist_graph", "figure"),
-    [Input('year_drop', 'value'),
+    [Input('cytoscape-graph-all-subreddits', 'tapNode'),
      Input('reddit_drop', 'value'),
      Input('sentim_drop', 'value')],
 )
-def update_output(YEAR, SUBREDDIT, SENTIMENT):
-    return networkGraph(YEAR, SUBREDDIT, SENTIMENT)
+
+
+def update_output(node, SUBREDDIT, SENTIMENT):
+    return networkGraph(node, SUBREDDIT, SENTIMENT)
 
 
 if __name__ == '__main__':
