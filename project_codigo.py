@@ -178,7 +178,7 @@ def networkGraph(node, SUBREDDIT, SENTIMENT_LINK):
     fig2 = px.histogram(network_df, x="YEAR", y="LINK_SENTIMENT",
              color='LINK_SENTIMENT', barmode='group',
              histfunc='count',
-             height=400,color_discrete_sequence=['#BDB76B','#FFA07A'], template="simple_white").update_layout({'plot_bgcolor': 'rgb(220,220,220)','paper_bgcolor': 'rgb(220,220,220)'})
+             height=400,color_discrete_sequence=['#BDB76B','#3498db'], template="simple_white").update_layout({'plot_bgcolor': 'rgb(220,220,220)','paper_bgcolor': 'rgb(220,220,220)'})
     fig2.update_xaxes(showline=True, linewidth=1, linecolor='grey', mirror=True)
     fig2.update_yaxes(showline=True, linewidth=1, linecolor='grey', mirror=True)
 
@@ -226,7 +226,7 @@ def networkGraph(node, SUBREDDIT, SENTIMENT_LINK):
       {
         "selector": 'node[id = "{}"]'.format(node['data']['id']),
         "style": {
-            'background-color': '#FFA07A',
+            'background-color': '#3498db',
             "opacity": '1',
             'width': 'mapData(num_edges, 0, 1300, 5, 50)',
             'height': 'mapData(num_edges, 0, 1300, 5, 50)',
@@ -258,7 +258,7 @@ def networkGraph(node, SUBREDDIT, SENTIMENT_LINK):
                 "style": {
                     'width': 'mapData(edge_weight, 0, 300, 0.2, 7)',
                     'height': 'mapData(edge_weight, 0, 300, 0.2, 7)',
-                    'line-color': "mapData(sentiment, -0.5, 1, #e74c3c, #2ecc71)",
+                    'line-color': "mapData(sentiment, -0.3, 0.3, #e74c3c, #2ecc71)",
                     'opacity': 0.9,
                     'z-index': 5000
                 }
@@ -283,7 +283,7 @@ def networkGraph(node, SUBREDDIT, SENTIMENT_LINK):
                 "style": {
                     'width': 'mapData(edge_weight, 0, 300, 0.2, 7)',
                     'height': 'mapData(edge_weight, 0, 300, 0.2, 7)',
-                    'line-color': "mapData(sentiment, -0.5, 1, #e74c3c, #2ecc71)",
+                    'line-color': "mapData(sentiment, -0.3, 0.3, #e74c3c, #2ecc71)",
                     'opacity': 0.9,
                     'z-index': 5000
                 }
@@ -301,24 +301,36 @@ app = dash.Dash(__name__)
 app.title = 'Dash Networkx'
 
 encoded_image = base64.b64encode(open('image_reddit.png', 'rb').read())
+encoded_image_legend = base64.b64encode(open('graph-legend.jpg', 'rb').read())
 
 app.layout = html.Div([
     html.Div([
         html.Div([
-            html.Img(src='data:image/png;base64,{}'.format(encoded_image.decode()),style={'height':'80%', 'width':'80%'}),
-        ], id='imag', style={'width': '20%'}),
-        html.Div([
             html.H1('Exploring Crypto Reddit'),
             dcc.Markdown('''
-            Reddit is a social media platform that allows users to post and comment on content. It is organized into communities called **subreddits**. Here we present an exploration into the connections between cryptocurrency-related subreddits. For more information on what Reddit it, check out [this video](https://www.youtube.com/watch?v=tlI022aUWQQ).
+            Reddit is a social media platform that allows users to post and comment on content. It is organized into communities called **subreddits**. Here we present an exploration into the connections between cryptocurrency-related subreddits.
+
+            The top part of the dash board shows invidual subreddit-level data, and the bottom part shows aggregated data on the subreddits in question.
+
+            For more information on what Reddit it, check out [this video](https://www.youtube.com/watch?v=tlI022aUWQQ).
         ''')
         ], id='text', style={'width': '80%'}),
+    html.Div([
+            html.Img(src='data:image/png;base64,{}'.format(encoded_image.decode()),style={'height':'200px', 'width':'100px%'}),
+        ], id='imag', style={'width': '40%'}),
     ], id='1st row', style={'display': 'flex'}, className='pretty_box'),
     html.Div([
         html.Div([
-            html.H2('Choose cripto and sentiment'),
+                # html.Br(),
+                html.H2('Connections between subreddits'),
+                dcc.Markdown('Connections are given by mentions of one subreddit by another.'),
+                html.Img(src='data:image/jpg;base64,{}'.format(encoded_image_legend.decode()),style={'height':'70px', 'width':'100px%'}),
+                cyto_graph,
+            ], id='graph', style={'width': '50%'}, className='pretty_box'),
+        html.Div([
+            html.H2('Choose subreddit and sentiment'),
     
-            html.Label('Cripto Reddit'),
+            html.Label('Cripto subreddit'),
             dropdown_reddit,
             html.Br(),
 
@@ -330,7 +342,7 @@ app.layout = html.Div([
             ],  id='Iteraction', style={'width': '20%'}, className='pretty_box'),
         html.Div([
             html.Div([
-                html.H3('Informations about Subreddit'),
+                html.H3('Informations about subreddit'),
                 html.Br(),
                 dash_table.DataTable(id='table_info', 
                                      style_table={
@@ -367,13 +379,9 @@ app.layout = html.Div([
                                          'textAlign': 'left'}),
             ]),
         ], id='tables', style={'width': '30%'}, className='pretty_box'),
-        html.Div([
-                html.Br(),
-                cyto_graph,
-            ], id='graph', style={'width': '50%'}, className='pretty_box'),
     ], id='2nd row', style={'display': 'flex'}),
         html.Div([
-        html.H4('Distributions about sentiments in subreddit'),
+        html.H4('Sentiment distribution in all subreddits'),
         html.Br(),
         dcc.Graph(id='hist_graph'),
         ],id='3nd row', className='pretty_box')
