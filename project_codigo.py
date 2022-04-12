@@ -20,6 +20,14 @@ def processing_features(data):
     data['YEAR'] = data['TIMESTAMP'].apply(lambda x: x.split('-')[0])
     data['LINK_SENTIMENT'] = data['LINK_SENTIMENT'].apply(lambda x: 'Neutral or Positive' if x==1 else 'Negative')
 
+
+    data = (data.query('SOURCE_SUBREDDIT in @subreddits_to_keep or TARGET_SUBREDDIT in @subreddits_to_keep')
+    .assign(
+    prop=lambda x: x.PROPERTIES.str.split(','),
+    directed_sentiment=lambda x: x.prop.apply(lambda y: float(y[20])),    
+  ))
+
+
     data['undirected_edge'] = data.apply(
         lambda x: str(sorted([x.SOURCE_SUBREDDIT, x.TARGET_SUBREDDIT])),
         axis=1)
@@ -27,7 +35,10 @@ def processing_features(data):
     mean_sentiment_df = (
       data.groupby('undirected_edge')
       .mean('directed_sentiment')
-      .rename(columns={'index': 'sentiment'}))
+      .rename(columns={'directed_sentiment': 'sentiment'})
+    )
+    print('hhhhhhh')
+    print(mean_sentiment_df['sentiment'])
 
     # Join mean_sentiment_df with data
     data = pd.merge(
@@ -38,14 +49,6 @@ def processing_features(data):
     )
     
     return data
-
-def filter_data(data):
-    '''
-    This function will filter cases will show in dashboard because the data is so big and we can't process all them
-    '''
-    data_filter = (data.query('SOURCE_SUBREDDIT in @subreddits_to_keep or TARGET_SUBREDDIT in @subreddits_to_keep'))
-    
-    return data_filter
 
 def expand_data(data):
     '''
@@ -58,7 +61,7 @@ def expand_data(data):
     
     return data_features
 
-def filter_cases_show(network_df, SUBREDDIT=False, SENTIMENT=False):
+def filter_cases_show(network_df, SUBREDDIT=False, SENTIMENT_LINK=False):
     '''
     This function prepare data will use in dash, input is the filter to apply in the dash and 
     the output is data filtered and options of filter.
@@ -66,8 +69,8 @@ def filter_cases_show(network_df, SUBREDDIT=False, SENTIMENT=False):
     if SUBREDDIT:
         network_df = network_df.query('SOURCE_SUBREDDIT in @SUBREDDIT or TARGET_SUBREDDIT in @SUBREDDIT')
 
-    if SENTIMENT:
-        network_df = network_df.query('LINK_SENTIMENT in @SENTIMENT')
+    if SENTIMENT_LINK:
+        network_df = network_df.query('LINK_SENTIMENT in @SENTIMENT_LINK')
 
     return network_df
 
@@ -76,9 +79,8 @@ def filter_cases_show(network_df, SUBREDDIT=False, SENTIMENT=False):
 df_title = pd.read_csv('data_title.tsv',sep='\t').loc[:, cols_to_keep]
 df_body = pd.read_csv('data_body.tsv',sep='\t').loc[:, cols_to_keep]
 network_df = pd.concat([df_title, df_body], axis=0).reset_index()
-network_df = filter_data(network_df)
-network_df = expand_data(network_df)
 network_df = processing_features(network_df)
+network_df = expand_data(network_df)
 
 # Create a NetworkX graph with subreddits from the dataframe
 G = nx.from_pandas_edgelist(
@@ -133,8 +135,8 @@ default_stylesheet = [
     {
       'selector': 'edge',
       'style': {
-        'width': 'mapData(edge_weight, 0, 1300, 0.2, 7)',
-        'height': 'mapData(edge_weight, 0, 1300, 0.2, 7)',
+        'width': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+        'height': 'mapData(edge_weight, 0, 300, 0.2, 7)',
       }
     },
 ]
@@ -145,7 +147,7 @@ nodes_and_edges = [*cyto_nodes, *cyto_edges]
 
 cyto_graph = cyto.Cytoscape(
   id='cytoscape-graph-all-subreddits',
-  style={'width': '100%', 'height': '500px'},
+  style={'width': '100%', 'height': '700px'},
   layout=default_layout,
   stylesheet=default_stylesheet,
   elements=nodes_and_edges
@@ -169,98 +171,8 @@ dropdown_sentim = dcc.Dropdown(
         multi=True
 )
 
-def networkGraph(node, SUBREDDIT, SENTIMENT):
-    network_df_filter = filter_cases_show(network_df, SUBREDDIT, SENTIMENT)
-    
-    # Create a NetworkX graph with subreddits from the dataframe
-    if not node:
-        stylesheet = default_stylesheet
-    else:
-        stylesheet = [
-          {
-            "selector": 'node',
-            'style': {
-                'opacity': '0.3',
-                'width': 'mapData(num_edges, 0, 1300, 5, 50)',
-                'height': 'mapData(num_edges, 0, 1300, 5, 50)',
-                'label': 'data(label)',
-                'text-valign': 'center',
-                'font-size': '6px',
-            }
-          },
-          {
-            'selector': 'edge',
-            'style': {
-                'opacity': '0.3',
-                'width': 'mapData(edge_weight, 0, 300, 0.2, 7)',
-                'height': 'mapData(edge_weight, 0, 300, 0.2, 7)',
-            }
-          },
-          {
-            "selector": 'node[id = "{}"]'.format(node['data']['id']),
-            "style": {
-                'background-color': '#FFA07A',
-                "opacity": '1',
-                'width': 'mapData(num_edges, 0, 1300, 5, 50)',
-                'height': 'mapData(num_edges, 0, 1300, 5, 50)',
-                'label': 'data(label)',
-                'text-valign': 'center',
-                'font-size': '6px',
-                'z-index': 9999
-            }
-          }
-        ]
-
-        for edge in node['edgesData']:
-            if edge['source'] == node['data']['id']:
-                stylesheet.append({
-                    "selector": 'node[id = "{}"]'.format(edge['target']),
-                    "style": {
-                        'background-color': '#BDB76B',
-                        'opacity': 0.9,
-                        'width': 'mapData(num_edges, 0, 1300, 5, 50)',
-                        'height': 'mapData(num_edges, 0, 1300, 5, 50)',
-                        'label': 'data(label)',
-                        'text-valign': 'center',
-                        'font-size': '6px',
-                        'z-index': 5000
-                    }
-                })
-                stylesheet.append({
-                    "selector": 'edge[id= "{}"]'.format(edge['id']),
-                    "style": {
-                        'width': 'mapData(edge_weight, 0, 300, 0.2, 7)',
-                        'height': 'mapData(edge_weight, 0, 300, 0.2, 7)',
-                        'line-color': "mapData(sentiment, -0.5, 1, #BDB76B, #87CEFA)",
-                        'opacity': 0.9,
-                        'z-index': 5000
-                    }
-                })
-
-            if edge['target'] == node['data']['id']:
-                stylesheet.append({
-                    "selector": 'node[id = "{}"]'.format(edge['source']),
-                    "style": {
-                        'background-color': '#BDB76B',
-                        'opacity': 0.9,
-                        'width': 'mapData(num_edges, 0, 1300, 5, 50)',
-                        'height': 'mapData(num_edges, 0, 1300, 5, 50)',
-                        'label': 'data(label)',
-                        'text-valign': 'center',
-                        'font-size': '6px',
-                        'z-index': 5000
-                    }
-                })
-                stylesheet.append({
-                    "selector": 'edge[id= "{}"]'.format(edge['id']),
-                    "style": {
-                        'width': 'mapData(edge_weight, 0, 300, 0.2, 7)',
-                        'height': 'mapData(edge_weight, 0, 300, 0.2, 7)',
-                        'line-color': "mapData(sentiment, -0.5, 1, #BDB76B, #87CEFA)",
-                        'opacity': 0.9,
-                        'z-index': 5000
-                    }
-                })
+def networkGraph(node, SUBREDDIT, SENTIMENT_LINK):
+    #network_df_filter = filter_cases_show(network_df, SUBREDDIT, SENTIMENT_LINK)
 
     ############ Bar chart #####################################
     fig2 = px.histogram(network_df, x="YEAR", y="LINK_SENTIMENT",
@@ -272,7 +184,7 @@ def networkGraph(node, SUBREDDIT, SENTIMENT):
 
     ############ Table Information post #####################################
     
-    table_cols = network_df_filter if SUBREDDIT or SENTIMENT else network_df
+    table_cols = network_df_filter if SUBREDDIT or SENTIMENT_LINK else network_df
 
     table_info = table_cols[['Number of words', 'Number of unique works', 'Number of unique stopwords',
                             'Fraction of stopwords', 'Number of sentences']].astype(float)
@@ -286,7 +198,98 @@ def networkGraph(node, SUBREDDIT, SENTIMENT):
     table_sent = pd.DataFrame(table_cols[['LINK_SENTIMENT']].value_counts()).reset_index().rename(columns={"LINK_SENTIMENT": "Sentiment about link", 0: "Quantity post"})
     dash_table_sent = table_sent.to_dict('records')
     columns_sent = [{"name": i, "id": i} for i in table_sent.columns]
+    
+    # Create a NetworkX graph with subreddits from the dataframe
+    if not node:
+        return default_stylesheet, dash_table_info, columns_table, dash_table_sent, columns_sent, fig2
+        
+    stylesheet = [
+      {
+        "selector": 'node',
+        'style': {
+            'opacity': '0.3',
+            'width': 'mapData(num_edges, 0, 1300, 5, 50)',
+            'height': 'mapData(num_edges, 0, 1300, 5, 50)',
+            'label': 'data(label)',
+            'text-valign': 'center',
+            'font-size': '6px',
+        }
+      },
+      {
+        'selector': 'edge',
+        'style': {
+            'opacity': '0.3',
+            'width': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+            'height': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+        }
+      },
+      {
+        "selector": 'node[id = "{}"]'.format(node['data']['id']),
+        "style": {
+            'background-color': '#B10DC9',
+            "opacity": '1',
+            'width': 'mapData(num_edges, 0, 1300, 5, 50)',
+            'height': 'mapData(num_edges, 0, 1300, 5, 50)',
+            'label': 'data(label)',
+            'text-valign': 'center',
+            'font-size': '6px',
+            'z-index': 9999
+        }
+      }
+    ]
 
+    for edge in node['edgesData']:
+        if edge['source'] == node['data']['id']:
+            stylesheet.append({
+                "selector": 'node[id = "{}"]'.format(edge['target']),
+                "style": {
+                    'background-color': '#f1c40f',
+                    'opacity': 0.9,
+                    'width': 'mapData(num_edges, 0, 1300, 5, 50)',
+                    'height': 'mapData(num_edges, 0, 1300, 5, 50)',
+                    'label': 'data(label)',
+                    'text-valign': 'center',
+                    'font-size': '6px',
+                    'z-index': 5000
+                }
+            })
+            stylesheet.append({
+                "selector": 'edge[id= "{}"]'.format(edge['id']),
+                "style": {
+                    'width': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+                    'height': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+                    'line-color': "mapData(sentiment, -0.5, 1, #e74c3c, #2ecc71)",
+                    'opacity': 0.9,
+                    'z-index': 5000
+                }
+            })
+
+        if edge['target'] == node['data']['id']:
+            stylesheet.append({
+                "selector": 'node[id = "{}"]'.format(edge['source']),
+                "style": {
+                    'background-color': '#f1c40f',
+                    'opacity': 0.9,
+                    'width': 'mapData(num_edges, 0, 1300, 5, 50)',
+                    'height': 'mapData(num_edges, 0, 1300, 5, 50)',
+                    'label': 'data(label)',
+                    'text-valign': 'center',
+                    'font-size': '6px',
+                    'z-index': 5000
+                }
+            })
+            stylesheet.append({
+                "selector": 'edge[id= "{}"]'.format(edge['id']),
+                "style": {
+                    'width': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+                    'height': 'mapData(edge_weight, 0, 300, 0.2, 7)',
+                    'line-color': "mapData(sentiment, -0.5, 1, #e74c3c, #2ecc71)",
+                    'opacity': 0.9,
+                    'z-index': 5000
+                }
+            })
+
+    
 
     return stylesheet, dash_table_info, columns_table, dash_table_sent, columns_sent, fig2
 
@@ -390,10 +393,10 @@ app.layout = html.Div([
 )
 
 
-def update_output(node, SUBREDDIT, SENTIMENT):
-    return networkGraph(node, SUBREDDIT, SENTIMENT)
+def update_output(node, SUBREDDIT, SENTIMENT_LINK):
+    return networkGraph(node, SUBREDDIT, SENTIMENT_LINK)
 
 
 if __name__ == '__main__':
-    #app.run_server(host='127.0.0.1', port=8050, dev_tools_hot_reload=False)
-    app.run_server(debug=True)
+    app.run_server(host='127.0.0.1', port=8080, dev_tools_hot_reload=False)
+    #app.run_server(debug=True)
