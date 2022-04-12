@@ -172,7 +172,7 @@ dropdown_sentim = dcc.Dropdown(
 )
 
 def networkGraph(node, SUBREDDIT, SENTIMENT_LINK):
-    #network_df_filter = filter_cases_show(network_df, SUBREDDIT, SENTIMENT_LINK)
+    network_df_filter = filter_cases_show(network_df, SUBREDDIT, SENTIMENT_LINK)
 
     ############ Bar chart #####################################
     fig2 = px.histogram(network_df, x="YEAR", y="LINK_SENTIMENT",
@@ -226,7 +226,7 @@ def networkGraph(node, SUBREDDIT, SENTIMENT_LINK):
       {
         "selector": 'node[id = "{}"]'.format(node['data']['id']),
         "style": {
-            'background-color': '#B10DC9',
+            'background-color': '#FFA07A',
             "opacity": '1',
             'width': 'mapData(num_edges, 0, 1300, 5, 50)',
             'height': 'mapData(num_edges, 0, 1300, 5, 50)',
@@ -243,7 +243,7 @@ def networkGraph(node, SUBREDDIT, SENTIMENT_LINK):
             stylesheet.append({
                 "selector": 'node[id = "{}"]'.format(edge['target']),
                 "style": {
-                    'background-color': '#f1c40f',
+                    'background-color': '#BDB76B',
                     'opacity': 0.9,
                     'width': 'mapData(num_edges, 0, 1300, 5, 50)',
                     'height': 'mapData(num_edges, 0, 1300, 5, 50)',
@@ -268,7 +268,7 @@ def networkGraph(node, SUBREDDIT, SENTIMENT_LINK):
             stylesheet.append({
                 "selector": 'node[id = "{}"]'.format(edge['source']),
                 "style": {
-                    'background-color': '#f1c40f',
+                    'background-color': '#BDB76B',
                     'opacity': 0.9,
                     'width': 'mapData(num_edges, 0, 1300, 5, 50)',
                     'height': 'mapData(num_edges, 0, 1300, 5, 50)',
