@@ -186,16 +186,15 @@ def networkGraph(node, SUBREDDIT, SENTIMENT_LINK):
     
     table_cols = network_df_filter if SUBREDDIT or SENTIMENT_LINK else network_df
 
-    table_info = table_cols[['Number of words', 'Number of unique works', 'Number of unique stopwords',
-                            'Fraction of stopwords', 'Number of sentences']].astype(float)
+    table_info = table_cols[['Compound sentiment calculated by VADER', 'Automated readability index', 'Number of words', 'Number of unique works', 'Number of unique stopwords', 'Fraction of stopwords', 'Number of sentences']].astype(float)
 
-    table_info_mean = table_info.describe().loc[['mean']].round(3).T.reset_index().rename(columns={"index": "Information about post", "mean": "Mean the Reddit filter"})
+    table_info_mean = table_info.describe().loc[['mean']].round(3).T.reset_index().rename(columns={"index": "Information about post", "mean": "Metric"})
     dash_table_info = table_info_mean.to_dict('records')
     columns_table = [{"name": i, "id": i} for i in table_info_mean.columns]
 
     ############ Table sentiment #####################################
 
-    table_sent = pd.DataFrame(table_cols[['LINK_SENTIMENT']].value_counts()).reset_index().rename(columns={"LINK_SENTIMENT": "Sentiment about link", 0: "Quantity post"})
+    table_sent = pd.DataFrame(table_cols[['LINK_SENTIMENT']].value_counts()).reset_index().rename(columns={"LINK_SENTIMENT": "Sentiment of edges", 0: "Number of posts"})
     dash_table_sent = table_sent.to_dict('records')
     columns_sent = [{"name": i, "id": i} for i in table_sent.columns]
     
@@ -324,23 +323,20 @@ app.layout = html.Div([
                 # html.Br(),
                 html.H2('Connections between subreddits'),
                 dcc.Markdown('Connections are given by mentions of one subreddit by another.'),
-                html.Img(src='data:image/jpg;base64,{}'.format(encoded_image_legend.decode()),style={'height':'70px', 'width':'100px%'}),
+                html.Img(src='data:image/jpg;base64,{}'.format(encoded_image_legend.decode()),style={'height':'120px', 'width':'100px%'}),
                 cyto_graph,
-            ], id='graph', style={'width': '50%'}, className='pretty_box'),
+            ], id='graph', style={'width': '70%'}, className='pretty_box'),
         html.Div([
-            html.H2('Choose subreddit and sentiment'),
-    
-            html.Label('Cripto subreddit'),
-            dropdown_reddit,
-            html.Br(),
+            html.Div([
+                html.H2('Choose subreddit and sentiment'),
+        
+                html.Label('Cripto subreddit'),
+                dropdown_reddit,
+                html.Br(),
 
-            html.Label('Sentiment'),
-            dropdown_sentim,
-            html.Br(),
-
-            html.Button('Submit', id='button')
-            ],  id='Iteraction', style={'width': '20%'}, className='pretty_box'),
-        html.Div([
+                html.Label('Sentiment'),
+                dropdown_sentim,
+                ],  id='Iteraction', className='pretty_box'),
             html.Div([
                 html.H3('Informations about subreddit'),
                 html.Br(),
@@ -406,5 +402,5 @@ def update_output(node, SUBREDDIT, SENTIMENT_LINK):
 
 
 if __name__ == '__main__':
-    app.run_server(host='127.0.0.1', port=8080, dev_tools_hot_reload=False)
-    #app.run_server(debug=True)
+    # app.run_server(host='127.0.0.1', port=8080, dev_tools_hot_reload=False)
+    app.run_server(debug=True)
