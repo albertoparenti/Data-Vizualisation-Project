@@ -37,8 +37,6 @@ def processing_features(data):
       .mean('directed_sentiment')
       .rename(columns={'directed_sentiment': 'sentiment'})
     )
-    print('hhhhhhh')
-    print(mean_sentiment_df['sentiment'])
 
     # Join mean_sentiment_df with data
     data = pd.merge(
@@ -75,12 +73,8 @@ def filter_cases_show(network_df, SUBREDDIT=False, SENTIMENT_LINK=False):
     return network_df
 
 
-#### Read the dataset and processing features will show in dash
-df_title = pd.read_csv('data_title.tsv',sep='\t').loc[:, cols_to_keep]
-df_body = pd.read_csv('data_body.tsv',sep='\t').loc[:, cols_to_keep]
-network_df = pd.concat([df_title, df_body], axis=0).reset_index()
-network_df = processing_features(network_df)
-network_df = expand_data(network_df)
+#### Read the filtered and processed dataset
+network_df = pd.read_csv('filtered_and_treated_dataset.csv')
 
 # Create a NetworkX graph with subreddits from the dataframe
 G = nx.from_pandas_edgelist(
