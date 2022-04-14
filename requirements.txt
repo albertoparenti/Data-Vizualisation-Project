@@ -57,7 +57,7 @@ nest-asyncio==1.5.1
 networkx==2.7.1
 numexpr==2.8.1
 numpy==1.21.5
-numpy-base==1.21.5
+# numpy-base==1.21.5
 openssl==1.1.1n
 packaging==21.3
 pandas==1.4.1
