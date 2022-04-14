@@ -95,12 +95,12 @@ traitlets==5.1.1
 urllib3==1.26.8
 # vc==14.2
 # vs2015_runtime==14.27.29016
-wcwidth==0.2.5
+# wcwidth==0.2.5
 werkzeug==2.0.0
 wheel==0.37.1
-win_inet_pton==1.1.0
-wincertstore==0.2
+# win_inet_pton==1.1.0
+# wincertstore==0.2
 # xz==5.2.5
-zipp==3.8.0
+# zipp==3.8.0
 # zlib==1.2.11
-zstd==1.4.9
+# zstd==1.4.9
