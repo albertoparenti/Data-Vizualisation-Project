@@ -72,7 +72,7 @@ pycparser==2.21
 pygments==2.11.2
 pyopenssl==22.0.0
 pyparsing==3.0.4
-pyqt==5.9.2
+# pyqt==5.9.2
 pysocks==1.7.1
 python==3.9.12
 python-dateutil==2.8.2
