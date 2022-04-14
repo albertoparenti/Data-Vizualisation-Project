@@ -93,7 +93,7 @@ tornado==6.1
 traitlets==5.1.1
 # tzdata==2022a
 urllib3==1.26.8
-vc==14.2
+# vc==14.2
 # vs2015_runtime==14.27.29016
 wcwidth==0.2.5
 werkzeug==2.0.0
