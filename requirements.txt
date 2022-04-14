@@ -26,7 +26,7 @@ executing==0.8.3
 flask==2.1.1
 flask-compress==1.11
 fonttools==4.25.0
-freetype==2.10.4
+# freetype==2.10.4
 icu==58.2
 idna==3.3
 importlib-metadata==4.11.3
