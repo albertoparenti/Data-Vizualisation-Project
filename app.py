@@ -290,7 +290,9 @@ def networkGraph(node, SUBREDDIT, SENTIMENT_LINK):
 # Dash app
 #external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 #app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+
 app = dash.Dash(__name__)
+server = app.server
 app.title = 'Dash Networkx'
 
 encoded_image = base64.b64encode(open('image_reddit.png', 'rb').read())
@@ -396,5 +398,4 @@ def update_output(node, SUBREDDIT, SENTIMENT_LINK):
 
 
 if __name__ == '__main__':
-    # app.run_server(host='127.0.0.1', port=8080, dev_tools_hot_reload=False)
     app.run_server(debug=True)
