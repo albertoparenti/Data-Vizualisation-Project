@@ -88,7 +88,7 @@ six==1.16.0
 # sqlite==3.38.2
 stack_data==0.2.0
 tenacity==8.0.1
-tk==8.6.11
+# tk==8.6.11
 tornado==6.1
 traitlets==5.1.1
 tzdata==2022a
